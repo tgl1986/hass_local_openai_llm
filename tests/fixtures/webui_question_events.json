@@ -1,0 +1,353 @@
+[
+  {
+    "type": "chat:list",
+    "data": {
+      "chat_id": "824c220b-5907-424c-a439-857278a48cf0",
+      "folder_id": null
+    }
+  },
+  {
+    "type": "chat:active",
+    "data": {
+      "active": true,
+      "folder_id": null,
+      "pending_approval": false
+    }
+  },
+  {
+    "type": "response:completion",
+    "data": {
+      "type": "response.output_item.added",
+      "output_index": 0,
+      "item": {
+        "type": "function_call",
+        "id": "call_voice_city",
+        "call_id": "call_voice_city",
+        "name": "ask_user",
+        "arguments": "",
+        "status": "in_progress"
+      }
+    }
+  },
+  {
+    "type": "response:completion",
+    "data": {
+      "type": "response.function_call_arguments.delta",
+      "item_id": "call_voice_city",
+      "output_index": 0,
+      "delta": "{\"questions\": [{\"id\": \"city\", \"header\": \"Stadt\", \"question\": \"Für welche Stadt soll ich den Spaziergang planen?\", \"options\": [{\"label\": \"Berlin\", \"description\": \"Spaziergang in Berlin\"}, {\"label\": \"Hamburg\", \"description\": \"Spaziergang in Hamburg\"}]}], \"allow_other\": true}"
+    }
+  },
+  {
+    "type": "chat:completion",
+    "data": {
+      "id": "chatcmpl-voice-city",
+      "object": "chat.completion.chunk",
+      "created": 1794081504,
+      "model": "voice-fixture",
+      "choices": [
+        {
+          "index": 0,
+          "delta": {},
+          "finish_reason": "tool_calls"
+        }
+      ]
+    }
+  },
+  {
+    "type": "response:completion",
+    "data": {
+      "type": "response.function_call_arguments.done",
+      "item_id": "call_voice_city",
+      "output_index": 0,
+      "arguments": "{\"questions\": [{\"id\": \"city\", \"header\": \"Stadt\", \"question\": \"Für welche Stadt soll ich den Spaziergang planen?\", \"options\": [{\"label\": \"Berlin\", \"description\": \"Spaziergang in Berlin\"}, {\"label\": \"Hamburg\", \"description\": \"Spaziergang in Hamburg\"}]}], \"allow_other\": true}"
+    }
+  },
+  {
+    "type": "response:completion",
+    "data": {
+      "type": "response.output_item.done",
+      "output_index": 0,
+      "item": {
+        "type": "function_call",
+        "id": "call_voice_city",
+        "call_id": "call_voice_city",
+        "name": "ask_user",
+        "arguments": "{\"questions\": [{\"id\": \"city\", \"header\": \"Stadt\", \"question\": \"Für welche Stadt soll ich den Spaziergang planen?\", \"options\": [{\"label\": \"Berlin\", \"description\": \"Spaziergang in Berlin\"}, {\"label\": \"Hamburg\", \"description\": \"Spaziergang in Hamburg\"}]}], \"allow_other\": true}",
+        "status": "completed"
+      }
+    }
+  },
+  {
+    "type": "chat:active",
+    "data": {
+      "active": true,
+      "pending_approval": true
+    }
+  },
+  {
+    "type": "chat:completion",
+    "data": {
+      "output": [
+        {
+          "type": "function_call",
+          "id": "call_voice_city",
+          "call_id": "call_voice_city",
+          "name": "ask_user",
+          "arguments": "{\"questions\":[{\"id\":\"city\",\"header\":\"Stadt\",\"question\":\"Für welche Stadt soll ich den Spaziergang planen?\",\"options\":[{\"label\":\"Berlin\",\"description\":\"Spaziergang in Berlin\"},{\"label\":\"Hamburg\",\"description\":\"Spaziergang in Hamburg\"}],\"allow_other\":true}],\"allow_other\":true,\"timeout_ms\":120000}",
+          "status": "pending"
+        }
+      ]
+    }
+  },
+  {
+    "type": "chat:active",
+    "data": {
+      "active": false,
+      "folder_id": null,
+      "pending_approval": true
+    }
+  },
+  {
+    "type": "chat:completion",
+    "data": {
+      "output": [
+        {
+          "type": "function_call",
+          "id": "call_voice_city",
+          "call_id": "call_voice_city",
+          "name": "ask_user",
+          "arguments": "{\"questions\":[{\"id\":\"city\",\"header\":\"Stadt\",\"question\":\"Für welche Stadt soll ich den Spaziergang planen?\",\"options\":[{\"label\":\"Berlin\",\"description\":\"Spaziergang in Berlin\"},{\"label\":\"Hamburg\",\"description\":\"Spaziergang in Hamburg\"}],\"allow_other\":true}],\"allow_other\":true,\"timeout_ms\":120000}",
+          "status": "completed"
+        },
+        {
+          "type": "function_call_output",
+          "id": "fco_call_voice_city",
+          "call_id": "call_voice_city",
+          "output": [
+            {
+              "type": "input_text",
+              "text": "{\"status\":\"answered\",\"answers\":{\"city\":\"München\"}}"
+            }
+          ],
+          "status": "completed"
+        },
+        {
+          "type": "message",
+          "id": "msg_6490eaf6ae74490eb2fe818dd133227a",
+          "status": "in_progress",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "output_text",
+              "text": ""
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "type": "chat:active",
+    "data": {
+      "active": true,
+      "folder_id": null,
+      "pending_approval": false
+    }
+  },
+  {
+    "type": "chat:completion",
+    "data": {
+      "output": [
+        {
+          "type": "function_call",
+          "id": "call_voice_city",
+          "call_id": "call_voice_city",
+          "name": "ask_user",
+          "arguments": "{\"questions\":[{\"id\":\"city\",\"header\":\"Stadt\",\"question\":\"Für welche Stadt soll ich den Spaziergang planen?\",\"options\":[{\"label\":\"Berlin\",\"description\":\"Spaziergang in Berlin\"},{\"label\":\"Hamburg\",\"description\":\"Spaziergang in Hamburg\"}],\"allow_other\":true}],\"allow_other\":true,\"timeout_ms\":120000}",
+          "status": "completed"
+        },
+        {
+          "type": "function_call_output",
+          "id": "fco_call_voice_city",
+          "call_id": "call_voice_city",
+          "output": [
+            {
+              "type": "input_text",
+              "text": "{\"status\":\"answered\",\"answers\":{\"city\":\"München\"}}"
+            }
+          ],
+          "status": "completed"
+        },
+        {
+          "type": "message",
+          "id": "msg_f8273b4e1d894e93884d290f",
+          "status": "in_progress",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "output_text",
+              "text": "Ich plane den Spaziergang "
+            }
+          ]
+        }
+      ],
+      "type": "response.output_text.delta"
+    }
+  },
+  {
+    "type": "chat:completion",
+    "data": {
+      "output": [
+        {
+          "type": "function_call",
+          "id": "call_voice_city",
+          "call_id": "call_voice_city",
+          "name": "ask_user",
+          "arguments": "{\"questions\":[{\"id\":\"city\",\"header\":\"Stadt\",\"question\":\"Für welche Stadt soll ich den Spaziergang planen?\",\"options\":[{\"label\":\"Berlin\",\"description\":\"Spaziergang in Berlin\"},{\"label\":\"Hamburg\",\"description\":\"Spaziergang in Hamburg\"}],\"allow_other\":true}],\"allow_other\":true,\"timeout_ms\":120000}",
+          "status": "completed"
+        },
+        {
+          "type": "function_call_output",
+          "id": "fco_call_voice_city",
+          "call_id": "call_voice_city",
+          "output": [
+            {
+              "type": "input_text",
+              "text": "{\"status\":\"answered\",\"answers\":{\"city\":\"München\"}}"
+            }
+          ],
+          "status": "completed"
+        },
+        {
+          "type": "message",
+          "id": "msg_f8273b4e1d894e93884d290f",
+          "status": "in_progress",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "output_text",
+              "text": "Ich plane den Spaziergang für München. "
+            }
+          ]
+        }
+      ],
+      "type": "response.output_text.delta"
+    }
+  },
+  {
+    "type": "chat:completion",
+    "data": {
+      "output": [
+        {
+          "type": "function_call",
+          "id": "call_voice_city",
+          "call_id": "call_voice_city",
+          "name": "ask_user",
+          "arguments": "{\"questions\":[{\"id\":\"city\",\"header\":\"Stadt\",\"question\":\"Für welche Stadt soll ich den Spaziergang planen?\",\"options\":[{\"label\":\"Berlin\",\"description\":\"Spaziergang in Berlin\"},{\"label\":\"Hamburg\",\"description\":\"Spaziergang in Hamburg\"}],\"allow_other\":true}],\"allow_other\":true,\"timeout_ms\":120000}",
+          "status": "completed"
+        },
+        {
+          "type": "function_call_output",
+          "id": "fco_call_voice_city",
+          "call_id": "call_voice_city",
+          "output": [
+            {
+              "type": "input_text",
+              "text": "{\"status\":\"answered\",\"answers\":{\"city\":\"München\"}}"
+            }
+          ],
+          "status": "completed"
+        },
+        {
+          "type": "message",
+          "id": "msg_f8273b4e1d894e93884d290f",
+          "status": "in_progress",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "output_text",
+              "text": "Ich plane den Spaziergang für München. Die Rückfrage ist beantwortet."
+            }
+          ]
+        }
+      ],
+      "type": "response.output_text.delta"
+    }
+  },
+  {
+    "type": "chat:completion",
+    "data": {
+      "id": "chatcmpl-voice-city",
+      "object": "chat.completion.chunk",
+      "created": 1794081505,
+      "model": "voice-fixture",
+      "choices": [
+        {
+          "index": 0,
+          "delta": {},
+          "finish_reason": "stop"
+        }
+      ]
+    }
+  },
+  {
+    "type": "chat:list",
+    "data": {
+      "chat_id": "824c220b-5907-424c-a439-857278a48cf0",
+      "folder_id": null
+    }
+  },
+  {
+    "type": "chat:completion",
+    "data": {
+      "done": true,
+      "output": [
+        {
+          "type": "function_call",
+          "id": "call_voice_city",
+          "call_id": "call_voice_city",
+          "name": "ask_user",
+          "arguments": "{\"questions\":[{\"id\":\"city\",\"header\":\"Stadt\",\"question\":\"Für welche Stadt soll ich den Spaziergang planen?\",\"options\":[{\"label\":\"Berlin\",\"description\":\"Spaziergang in Berlin\"},{\"label\":\"Hamburg\",\"description\":\"Spaziergang in Hamburg\"}],\"allow_other\":true}],\"allow_other\":true,\"timeout_ms\":120000}",
+          "status": "completed"
+        },
+        {
+          "type": "function_call_output",
+          "id": "fco_call_voice_city",
+          "call_id": "call_voice_city",
+          "output": [
+            {
+              "type": "input_text",
+              "text": "{\"status\":\"answered\",\"answers\":{\"city\":\"München\"}}"
+            }
+          ],
+          "status": "completed"
+        },
+        {
+          "type": "message",
+          "id": "msg_f8273b4e1d894e93884d290f",
+          "status": "completed",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "output_text",
+              "text": "Ich plane den Spaziergang für München. Die Rückfrage ist beantwortet."
+            }
+          ]
+        }
+      ],
+      "title": "Voice question contract",
+      "usage": {
+        "incomplete": true
+      }
+    }
+  },
+  {
+    "type": "chat:active",
+    "data": {
+      "active": false,
+      "folder_id": null,
+      "pending_approval": false
+    }
+  }
+]

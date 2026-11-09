@@ -1,5 +1,8 @@
 # Local OpenAI LLM <small>_(Custom Integration for Home Assistant)_</small>
 
+> This fork includes the native OpenWebUI extension on upstream 1.15.1.
+> See [extension behaviour, merge decisions and validation](docs/openwebui-extension.md).
+
 **Allows use of generic OpenAI-compatible LLM services, such as (but not limited to):**
 
 - DeepSeek

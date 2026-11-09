@@ -1,0 +1,16 @@
+{
+  "config_subentries": {
+    "conversation": {
+      "step": {
+        "user": {
+          "data": {"openwebui_native": "OpenWebUI-Flow verwenden", "openwebui_attach_ha_prompt": "HomeAssistant Prompt anhängen", "pipeline_timeout": "Mindest-Timeout der Assist-Pipeline (Sekunden)"},
+          "data_description": {"openwebui_native": "Gespeicherten OpenWebUI-Chat mit den Tools und Fähigkeiten des Workspace-Assistenten verwenden.", "openwebui_attach_ha_prompt": "Nur im OpenWebUI-Flow: Den aufbereiteten Home-Assistant-Prompt vor jede neue Nutzereingabe setzen. Deaktiviert wird der HA-Prompt ignoriert. Der Workspace-Systemprompt bleibt unverändert.", "pipeline_timeout": "Mindestfrist für neue Assist-Pipeline-Aufrufe dieses Agenten. Vorgabe: 1800 Sekunden (30 Minuten). Längere Clientfristen bleiben erhalten."}
+        },
+        "reconfigure": {
+          "data": {"openwebui_native": "OpenWebUI-Flow verwenden", "openwebui_attach_ha_prompt": "HomeAssistant Prompt anhängen", "pipeline_timeout": "Mindest-Timeout der Assist-Pipeline (Sekunden)"},
+          "data_description": {"openwebui_native": "Gespeicherten OpenWebUI-Chat mit den Tools und Fähigkeiten des Workspace-Assistenten verwenden.", "openwebui_attach_ha_prompt": "Nur im OpenWebUI-Flow: Den aufbereiteten Home-Assistant-Prompt vor jede neue Nutzereingabe setzen. Deaktiviert wird der HA-Prompt ignoriert. Der Workspace-Systemprompt bleibt unverändert.", "pipeline_timeout": "Mindestfrist für neue Assist-Pipeline-Aufrufe dieses Agenten. Vorgabe: 1800 Sekunden (30 Minuten). Längere Clientfristen bleiben erhalten."}
+        }
+      }
+    }
+  }
+}

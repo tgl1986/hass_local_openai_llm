@@ -8,17 +8,25 @@ import json
 import logging
 import time
 import uuid
+from builtins import anext
+from copy import deepcopy
 from dataclasses import dataclass, field
+from datetime import timedelta
 from typing import TYPE_CHECKING, Any, Literal
 
+import aiohttp
 import demoji
 import openai
+import socketio
 from homeassistant.components import conversation
 from homeassistant.const import CONF_MODEL
+from homeassistant.core import callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import llm, template
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity import Entity
+from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.util import dt as dt_util
 from homeassistant.util import slugify
 from openai.types.chat import (
@@ -33,6 +41,7 @@ from openai.types.chat import (
 )
 from openai.types.chat.chat_completion_message_function_tool_call_param import Function
 from openai.types.shared_params import FunctionDefinition, ResponseFormatJSONSchema
+from yarl import URL
 
 try:
     from probatio import to_openapi as convert
@@ -48,6 +57,8 @@ from .const import (
     CONF_CONTENT_INJECTION_METHOD_USER,
     CONF_CUSTOM_HEADERS,
     CONF_MAX_MESSAGE_HISTORY,
+    CONF_OPENWEBUI_ATTACH_HA_PROMPT,
+    CONF_OPENWEBUI_NATIVE,
     CONF_PASS_SESSION_ID,
     CONF_REQUEST_BODY_OPTS,
     CONF_REQUEST_BODY_PARAMETERS,
@@ -73,6 +84,7 @@ from .weaviate import WeaviateClient
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Callable
+    from datetime import datetime
     from pathlib import Path
 
     import voluptuous as vol
@@ -107,6 +119,23 @@ class AgentContext:
     iteration: int = 0
     conversation_id: str | None = None
     extra_body: dict = field(default_factory=dict)
+
+
+@dataclass
+class WebUIChat:
+    """Identifiers and receive position for one native saved chat."""
+
+    chat_id: str = ""
+    assistant_id: str = ""
+    model_id: str = ""
+    pending: dict | None = None
+    answers: dict[str, str] = field(default_factory=dict)
+    text: dict[tuple[str, int, str], str] = field(default_factory=dict)
+    tool_calls: dict[str, str] = field(default_factory=dict)
+    tool_results: set[str] = field(default_factory=set)
+    events: asyncio.Queue = field(default_factory=asyncio.Queue)
+    active: bool = False
+    headers: dict[str, str] = field(default_factory=dict)
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -219,6 +248,10 @@ class LocalAiEntity(Entity):
         self.subentry = subentry
         self.model = subentry.data[CONF_MODEL]
         self._attr_unique_id = subentry.subentry_id
+        self._webui_chats: dict[str, WebUIChat] = {}
+        self._webui_socket: socketio.AsyncClient | None = None
+        self._webui_connect_lock = asyncio.Lock()
+        self._webui_heartbeat_unsub: Callable[[], None] | None = None
         self._attr_device_info = dr.DeviceInfo(
             identifiers={(DOMAIN, subentry.subentry_id)},
             name=subentry.title,
@@ -245,6 +278,792 @@ class LocalAiEntity(Entity):
     def weaviate_server_opts(self) -> dict:
         """Return Weaviate server options from entry data."""
         return self.entry.data.get(CONF_WEAVIATE_OPTIONS, {})
+
+    @property
+    def _uses_webui(self) -> bool:
+        return self.subentry.subentry_type == "conversation" and self.options.get(
+            CONF_OPENWEBUI_NATIVE, False
+        )
+
+    def _webui_has_pending(self, conversation_id: str) -> bool:
+        state = self._webui_chats.get(conversation_id)
+        return bool(state and state.pending)
+
+    async def async_added_to_hass(self) -> None:
+        """Follow HA's chat lifecycle instead of introducing another timeout."""
+        await super().async_added_to_hass()
+        if self._uses_webui:
+            from homeassistant.components.conversation.chat_log import (  # noqa: PLC0415
+                async_subscribe_chat_logs,
+            )
+
+            self.async_on_remove(
+                async_subscribe_chat_logs(self.hass, self._webui_chat_event)
+            )
+
+    @callback
+    def _webui_chat_event(
+        self, conversation_id: str, event_type: str, _data: dict
+    ) -> None:
+        if event_type != "deleted":
+            return
+        state = self._webui_chats.pop(conversation_id, None)
+        if state and state.active:
+            # Wake the waiter; the existing cancellation path forwards Stop.
+            state.events.put_nowait(asyncio.CancelledError())
+
+    def _webui_base_url(self) -> URL:
+        """Keep reverse-proxy prefixes when deriving the native API root."""
+        url = URL(str(self.entry.runtime_data.base_url))
+        path = url.path.rstrip("/")
+        for suffix in ("/api/v1", "/api", "/v1"):
+            if path.endswith(suffix):
+                path = path[: -len(suffix)]
+                break
+        return url.with_path(path)
+
+    async def _async_webui_request(
+        self, method: str, path: str, headers: dict, body: dict | None = None
+    ) -> dict:
+        url = str(self._webui_base_url()).rstrip("/") + path
+        request_headers = {
+            "Authorization": f"Bearer {self.entry.runtime_data.api_key}",
+            **headers,
+        }
+        async with async_get_clientsession(self.hass).request(
+            method,
+            url,
+            headers=request_headers,
+            json=body,
+            timeout=aiohttp.ClientTimeout(total=None),
+        ) as response:
+            response.raise_for_status()
+            return await response.json()
+
+    async def _async_webui_connect(self, headers: dict) -> None:
+        async with self._webui_connect_lock:
+            if self._webui_socket is None:
+                self._webui_socket = socketio.AsyncClient(
+                    reconnection=False,
+                    request_timeout=None,
+                    http_session=async_get_clientsession(self.hass),
+                    handle_sigint=False,
+                )
+
+                async def on_event(event: dict) -> None:
+                    for state in self._webui_chats.values():
+                        if (
+                            event.get("chat_id") == state.chat_id
+                            and event.get("message_id") == state.assistant_id
+                        ):
+                            state.events.put_nowait(event["data"])
+
+                async def on_disconnect(*_args: Any) -> None:
+                    self._webui_stop_heartbeat()
+                    for state in self._webui_chats.values():
+                        if state.active:
+                            state.events.put_nowait(
+                                HomeAssistantError(
+                                    "OpenWebUI connection lost; the server task may still be running."
+                                )
+                            )
+
+                self._webui_socket.on("events", on_event)
+                self._webui_socket.on("disconnect", on_disconnect)
+
+            if not self._webui_socket.connected:
+                config = await self._async_webui_request("GET", "/api/config", headers)
+                heartbeat_interval = (config.get("features") or {}).get(
+                    "websocket_heartbeat_interval"
+                )
+                if heartbeat_interval is None:
+                    heartbeat_interval = 30
+                url = self._webui_base_url()
+                await self._webui_socket.connect(
+                    str(url.origin()),
+                    socketio_path=url.path.strip("/") + "/ws/socket.io",
+                    auth={"token": self.entry.runtime_data.api_key},
+                    headers=headers,
+                    transports=["websocket"],
+                    wait_timeout=None,
+                )
+                self._webui_stop_heartbeat()
+                self._webui_heartbeat_unsub = async_track_time_interval(
+                    self.hass,
+                    self._async_webui_heartbeat,
+                    timedelta(seconds=heartbeat_interval),
+                )
+
+    async def _async_webui_heartbeat(self, _now: datetime) -> None:
+        """Maintain WebUI's application session independently of model activity."""
+        if self._webui_socket is not None and self._webui_socket.connected:
+            await self._webui_socket.emit("heartbeat", {})
+
+    @callback
+    def _webui_stop_heartbeat(self) -> None:
+        if self._webui_heartbeat_unsub is not None:
+            self._webui_heartbeat_unsub()
+            self._webui_heartbeat_unsub = None
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Release this entity's native transport, preserving its saved chats."""
+        self._webui_stop_heartbeat()
+        try:
+            for state in tuple(self._webui_chats.values()):
+                if state.active and state.chat_id:
+                    try:
+                        await self._async_webui_stop(state)
+                    except Exception:
+                        _LOGGER.exception(
+                            "Could not stop OpenWebUI task while unloading"
+                        )
+                    finally:
+                        state.events.put_nowait(HomeAssistantError("Agent unloaded."))
+        finally:
+            try:
+                if self._webui_socket is not None:
+                    await self._webui_socket.disconnect()
+            finally:
+                self._webui_chats.clear()
+                await super().async_will_remove_from_hass()
+
+    async def _async_webui_stop(self, state: WebUIChat) -> None:
+        result = await self._async_webui_request(
+            "POST", f"/api/tasks/chat/{state.chat_id}/stop", state.headers
+        )
+        if not result.get("status"):
+            msg = "OpenWebUI did not confirm stopping the chat task."
+            raise HomeAssistantError(msg)
+
+    @staticmethod
+    def _webui_question(state: WebUIChat) -> str:
+        call = state.pending
+        if call["name"] != "ask_user":
+            return (
+                f"{call['name']}: {call.get('arguments', '')}. Ausführen? Ja oder Nein?"
+            )
+        args = json.loads(call["arguments"])
+        question = next(q for q in args["questions"] if q["id"] not in state.answers)
+        choices = "; ".join(
+            f"{index}: {option['label']} — {option['description']}"
+            for index, option in enumerate(question["options"], 1)
+        )
+        return f"{question['question']} {choices}"
+
+    @staticmethod
+    def _webui_answer(state: WebUIChat, text: str) -> dict | None:
+        """Map explicit UI input to the native resolver, without another LLM."""
+        call = state.pending
+        choice = text.strip().rstrip(".?!").casefold()
+        if call["name"] != "ask_user":
+            if choice in ("ja", "yes", "approve", "freigeben", "bestätigen"):
+                return {"call_id": call["call_id"], "action": "approve"}
+            if choice in ("nein", "no", "reject", "ablehnen"):
+                return {"call_id": call["call_id"], "action": "reject"}
+            return None
+        args = json.loads(call["arguments"])
+        question = next(q for q in args["questions"] if q["id"] not in state.answers)
+        answer = (
+            text.strip()
+            if question.get("allow_other", args.get("allow_other", True))
+            else None
+        )
+        for index, option in enumerate(question["options"], 1):
+            if choice in (str(index), option["label"].casefold()):
+                answer = option["label"]
+                break
+        if not answer:
+            return None
+        state.answers[question["id"]] = answer
+        if any(q["id"] not in state.answers for q in args["questions"]):
+            return None
+        return {
+            "call_id": call["call_id"],
+            "action": "answer",
+            "answers": dict(state.answers),
+        }
+
+    @staticmethod
+    def _webui_workspace_options(model: dict) -> dict:
+        """Copy configured selection; capability/permission enforcement stays upstream."""
+        meta = model.get("info", {}).get("meta") or {}
+        # These are selection identifiers from WebUI, not a list of tools or
+        # capabilities maintained by this integration.
+        result = {
+            "tool_ids": list(meta.get("toolIds") or []),
+            "features": dict.fromkeys(meta.get("defaultFeatureIds") or [], True),
+        }
+        for source, target in (
+            ("terminalId", "terminal_id"),
+            ("skillIds", "skill_ids"),
+            ("defaultFilterIds", "filter_ids"),
+        ):
+            if source in meta:
+                result[target] = deepcopy(meta[source])
+        return result
+
+    async def _async_webui_prepare_turn(
+        self, state: WebUIChat, model_args: dict, extra: dict, injected: dict | None
+    ) -> dict:
+        models = await self._async_webui_request("GET", "/api/models", state.headers)
+        model = next(
+            (m for m in models["data"] if m["id"] == model_args["model"]), None
+        )
+        if model is None:
+            msg = "Configured OpenWebUI Workspace model was not found."
+            raise HomeAssistantError(msg)
+        # Preserve ordinary request options. Only native protocol and Workspace
+        # selection fields are supplied by this path instead of by the SDK.
+        body = deepcopy({k: v for k, v in model_args.items() if k != "extra_headers"})
+        body.update(deepcopy(extra))
+        body.pop("tools", None)
+        body.pop("tool_choice", None)
+        for key in ("terminal_id", "skill_ids", "filter_ids", "tool_servers"):
+            body.pop(key, None)
+        workspace = self._webui_workspace_options(model)
+        body.update(workspace)
+        params = {
+            **(model.get("info", {}).get("params") or {}),
+            **(body.get("params") or {}),
+        }
+        # The native resolver rebuilds requests from saved params. Keep existing
+        # generation options there as well, excluding native routing/context.
+        protocol_fields = {
+            "model",
+            "messages",
+            "params",
+            "stream",
+            "metadata",
+            "tool_ids",
+            "features",
+            "terminal_id",
+            "skill_ids",
+            "filter_ids",
+            "files",
+            "variables",
+            "chat_variables",
+            "background_tasks",
+            "session_id",
+            "chat_id",
+            "id",
+            "user_message",
+            "parent_id",
+            "assistant_message_id",
+        }
+        generation = {
+            key: deepcopy(value)
+            for key, value in body.items()
+            if key not in protocol_fields
+        }
+        params.update(generation)
+        if params.get("custom_params"):
+            params["custom_params"] = {
+                key: generation.get(key, value)
+                for key, value in params["custom_params"].items()
+            }
+        params["function_calling"] = "native"
+        system = (
+            next(
+                (m["content"] for m in body["messages"] if m["role"] == "system"), None
+            )
+            if self.options.get(CONF_OPENWEBUI_ATTACH_HA_PROMPT, False)
+            else None
+        )
+        # Let WebUI resolve its Workspace system prompt from the model ID.
+        params.pop("system", None)
+        body.pop("system", None)
+        body["messages"] = [m for m in body["messages"] if m["role"] != "system"]
+        body["params"] = params
+        if state.chat_id:
+            saved = await self._async_webui_request(
+                "GET", f"/api/v1/chats/{state.chat_id}", state.headers
+            )
+            chat = saved["chat"]
+        else:
+            chat = {
+                "title": "Home Assistant",
+                "models": [model["id"]],
+                "history": {"messages": {}, "currentId": None},
+            }
+        history = chat["history"]["messages"]
+        parent_id = state.assistant_id or None
+        user_id, assistant_id = str(uuid.uuid4()), str(uuid.uuid4())
+        user = deepcopy(body["messages"][-1])
+        if system:
+            content = user["content"]
+            user["content"] = (
+                f"{system}\n\n{content}"
+                if isinstance(content, str)
+                else [{"type": "text", "text": system}, *content]
+            )
+            body["messages"][-1]["content"] = deepcopy(user["content"])
+        user.update(
+            id=user_id,
+            parentId=parent_id,
+            childrenIds=[assistant_id],
+            timestamp=int(time.time()),
+            models=[model["id"]],
+        )
+        additions = []
+        if injected is not None:
+            context_id = str(uuid.uuid4())
+            context_message = deepcopy(injected)
+            context_message.update(
+                id=context_id,
+                parentId=parent_id,
+                childrenIds=[user_id],
+                timestamp=int(time.time()),
+            )
+            additions.append(context_message)
+            user["parentId"] = context_id
+        assistant = {
+            "id": assistant_id,
+            "parentId": user_id,
+            "childrenIds": [],
+            "role": "assistant",
+            "content": "",
+            "done": False,
+            "model": model["id"],
+            "modelName": model.get("name", model["id"]),
+            "modelIdx": 0,
+            "timestamp": int(time.time()),
+        }
+        additions.extend([user, assistant])
+        if parent_id:
+            history[parent_id].setdefault("childrenIds", []).append(additions[0]["id"])
+        for message in additions:
+            history[message["id"]] = message
+        chat["history"]["currentId"] = assistant_id
+        chat["messages"] = list(history.values())
+        chat["params"] = {**(chat.get("params") or {}), **params}
+        chat["params"].pop("system", None)
+        if "files" in body:
+            chat["files"] = deepcopy(body["files"])
+        endpoint = (
+            f"/api/v1/chats/{state.chat_id}" if state.chat_id else "/api/v1/chats/new"
+        )
+        result = await self._async_webui_request(
+            "POST", endpoint, state.headers, {"chat": chat}
+        )
+        state.chat_id = result["id"]
+        state.assistant_id = assistant_id
+        state.model_id = model["id"]
+        state.text.clear()
+        state.tool_calls.clear()
+        state.tool_results.clear()
+        body.update(
+            chat_id=state.chat_id,
+            id=assistant_id,
+            user_message=user,
+            session_id=self._webui_socket.get_sid(),
+            stream=True,
+        )
+        return body
+
+    @staticmethod
+    def _webui_output_text(state: WebUIChat, event: dict) -> list[dict]:
+        """Translate native text and external tool events into HA chat deltas."""
+        data = event.get("data") or {}
+        chunks = []
+        if not isinstance(data, dict):
+            return chunks
+        if event.get("type") == "response:completion":
+            kind = data.get("type", "")
+            field_name = "thinking_content" if "reasoning" in kind else "content"
+            if kind.endswith("text.delta") and isinstance(data.get("delta"), str):
+                key = (
+                    data["item_id"],
+                    data.get("content_index", data.get("summary_index", 0)),
+                    field_name,
+                )
+                state.text[key] = state.text.get(key, "") + data["delta"]
+                chunks.append({field_name: data["delta"]})
+        items = data.get("output") or []
+        part_index = 0
+        if event.get("type") == "response:completion":
+            kind = data.get("type", "")
+            if kind in ("response.completed", "response.incomplete"):
+                # Provider completion is a snapshot, not the end of WebUI's turn.
+                items = (data.get("response") or {}).get("output") or items
+            elif (
+                kind in ("response.output_text.done", "response.content_part.done")
+                and data.get("item_id")
+                and (kind != "response.content_part.done" or "content_index" in data)
+            ):
+                part = (
+                    data.get("part") if kind == "response.content_part.done" else data
+                )
+                if (
+                    isinstance(part, dict)
+                    and isinstance(part.get("text"), str)
+                    and (
+                        kind == "response.output_text.done"
+                        or part.get("type") == "output_text"
+                    )
+                ):
+                    part_index = data.get("content_index", 0)
+                    items = [
+                        {
+                            "id": data["item_id"],
+                            "type": "message",
+                            "content": [{"text": part["text"]}],
+                        }
+                    ]
+        if (
+            event.get("type") == "response:completion"
+            and data.get("type") == "response.output_item.done"
+            and (item := data.get("item", {})).get("type")
+            in ("function_call", "function_call_output", "message")
+        ):
+            items = [item]
+        for item in items:
+            if item.get("type") == "function_call":
+                call_id = item.get("call_id") or item["id"]
+                if call_id in state.tool_calls or item.get("status") == "in_progress":
+                    continue
+                arguments = item.get("arguments") or "{}"
+                try:
+                    args = (
+                        json.loads(arguments)
+                        if isinstance(arguments, str)
+                        else arguments
+                    )
+                except json.JSONDecodeError:
+                    # Report the provider's call; WebUI handles invalid arguments.
+                    args = {"json_decode_failure": arguments}
+                state.tool_calls[call_id] = item["name"]
+                chunks.append(
+                    {
+                        "tool_calls": [
+                            llm.ToolInput(
+                                id=call_id,
+                                tool_name=item["name"],
+                                tool_args=args,
+                                external=True,
+                            )
+                        ]
+                    }
+                )
+                continue
+            if item.get("type") == "function_call_output":
+                call_id = item["call_id"]
+                if call_id in state.tool_results or call_id not in state.tool_calls:
+                    continue
+                state.tool_results.add(call_id)
+                chunks.append(
+                    {
+                        "role": "tool_result",
+                        "tool_call_id": call_id,
+                        "tool_name": state.tool_calls[call_id],
+                        "result": llm.ToolResult(data={"output": item.get("output")}),
+                    }
+                )
+                continue
+            if item.get("type") not in ("message", "reasoning"):
+                continue
+            field_name = (
+                "thinking_content" if item["type"] == "reasoning" else "content"
+            )
+            parts = item.get("content") or item.get("summary") or []
+            for index, part in enumerate(parts, start=part_index):
+                text = part.get("text", "")
+                key = (item["id"], index, field_name)
+                previous = state.text.get(key, "")
+                if (
+                    field_name == "thinking_content"
+                    and previous.strip() == text.strip()
+                ):
+                    # Native final snapshots trim reasoning whitespace.
+                    # This content is never speech; do not repeat it or abort TTS.
+                    state.text[key] = text
+                elif text.startswith(previous):
+                    if suffix := text[len(previous) :]:
+                        chunks.append({field_name: suffix})
+                    state.text[key] = text
+                elif not previous.startswith(text):
+                    msg = "OpenWebUI revised text that has already been spoken."
+                    raise HomeAssistantError(msg)
+        return chunks
+
+    async def _async_webui_receive(
+        self, state: WebUIChat, meta: GenerationMetadata
+    ) -> AsyncGenerator[
+        conversation.AssistantContentDeltaDict
+        | conversation.ToolResultContentDeltaDict,
+        None,
+    ]:
+        yield {"role": "assistant"}
+        role = "assistant"
+        while True:
+            event = await state.events.get()
+            if isinstance(event, BaseException):
+                raise event
+            if event.get("type") == "chat:tasks:cancel":
+                msg = "OpenWebUI cancelled the response."
+                raise HomeAssistantError(msg)
+            data = event.get("data") or {}
+            if not isinstance(data, dict):
+                continue
+            if event.get("type") == "chat:message:error" or data.get("error"):
+                msg = f"OpenWebUI generation failed: {data.get('error', data)}"
+                raise HomeAssistantError(msg)
+            for chunk in self._webui_output_text(state, event):
+                if not meta.time_to_first_token:
+                    meta.time_to_first_token = round(
+                        (time.time() - meta.request_start) * 1000, 2
+                    )
+                if chunk:
+                    if chunk.get("role") == "tool_result":
+                        role = "tool_result"
+                    elif role != "assistant":
+                        yield {"role": "assistant"}
+                        role = "assistant"
+                    yield chunk
+            if (
+                event.get("type") == "response:completion"
+                and data.get("type") == "response.output_item.done"
+                and (data.get("item") or {}).get("type") == "message"
+                and (data.get("item") or {}).get("status") == "completed"
+                and role == "assistant"
+            ):
+                # The native message is complete even when its text was already
+                # emitted as deltas. Preserve that boundary for HA and reminders.
+                yield {"role": "assistant"}
+            if event.get("type") != "chat:completion":
+                continue
+            output = data.get("output") or []
+            result_ids = {
+                item.get("call_id")
+                for item in output
+                if item.get("type") == "function_call_output"
+            }
+            pending = next(
+                (
+                    item
+                    for item in output
+                    if item.get("type") == "function_call"
+                    and item.get("status") in ("pending", "requires_approval")
+                    and item.get("call_id", item.get("id")) not in result_ids
+                ),
+                None,
+            )
+            if pending is not None:
+                state.pending = deepcopy(pending)
+                if "call_id" not in state.pending:
+                    state.pending["call_id"] = pending["id"]
+                state.answers.clear()
+                yield {"role": "assistant"}
+                yield {"content": self._webui_question(state)}
+                return
+            if data.get("done") is True:
+                if role == "tool_result":
+                    # HA requires a final assistant message, including silent replies.
+                    yield {"role": "assistant", "content": ""}
+                meta.usage = data.get("usage")
+                meta.tool_names = list(
+                    dict.fromkeys(
+                        item["name"]
+                        for item in output
+                        if item.get("type") == "function_call"
+                    )
+                )
+                meta.finish_reason = "stop"
+                return
+
+    async def _async_webui_turn(  # noqa: C901 - Preserve the existing native turn lifecycle.
+        self,
+        chat_log: conversation.ChatLog,
+        user_input: conversation.ConversationInput | None = None,
+        *,
+        structure_name: str | None = None,
+        structure: vol.Schema | None = None,
+        parallel_tool_calls: bool = False,
+    ) -> bool:
+        state = self._webui_chats.setdefault(chat_log.conversation_id, WebUIChat())
+        meta = GenerationMetadata()
+        previous_answers = dict(state.answers)
+        # Reminders must never enter the request that they accompany.
+        contents = list(chat_log.content)
+        loop = asyncio.get_running_loop()
+        # Leave room inside the client's 30 s HTTP deadline for STT and TTS.
+        # Subsequent reminders remain less frequent while native work continues.
+        deadline = loop.time() + 10.0
+
+        async def native_stream() -> AsyncGenerator[dict]:
+            if state.pending:
+                resolution = self._webui_answer(
+                    state, user_input.text if user_input else ""
+                )
+                if resolution is None:
+                    yield {"role": "assistant", "content": self._webui_question(state)}
+                    return
+                context = AgentContext(conversation_id=chat_log.conversation_id)
+                state.headers = await self._async_get_custom_headers(context)
+            else:
+                resolution = None
+                model_args, context, injected = await self._async_prepare_chat_log(
+                    chat_log,
+                    contents,
+                    structure_name,
+                    structure,
+                    user_input,
+                    parallel_tool_calls=parallel_tool_calls,
+                )
+                self._get_extra_body_args(context)
+                state.headers = model_args["extra_headers"]
+            # Keep generation timing separate from the earlier audio deadline.
+            meta.request_start = time.time()
+            await self._async_webui_connect(state.headers)
+            state.events = asyncio.Queue()
+            if resolution is None:
+                body = await self._async_webui_prepare_turn(
+                    state, model_args, context.extra_body, injected
+                )
+                path = "/api/chat/completions"
+            else:
+                body = resolution
+                path = f"/api/v1/chats/{state.chat_id}/messages/{state.assistant_id}/resolve"
+            state.active = True
+            accepted = await self._async_webui_request(
+                "POST", path, state.headers, body
+            )
+            if not accepted.get("status"):
+                msg = "OpenWebUI did not accept the request."
+                raise HomeAssistantError(msg)
+            if resolution is not None:
+                state.pending = None
+                state.answers.clear()
+            async for chunk in self._transform_stream(
+                self._async_webui_receive(state, meta),
+                strip_emojis=self.options.get(CONF_STRIP_EMOJIS),
+                conversation_id=chat_log.conversation_id,
+                meta=meta,
+                native_deltas=True,
+            ):
+                yield chunk
+
+        async def progress_stream() -> AsyncGenerator[dict]:
+            nonlocal deadline
+            native = native_stream()
+            pending = asyncio.create_task(anext(native))
+            can_announce = True
+            progress_open = False
+            try:
+                while True:
+                    # Do not cancel native work when an announcement becomes due.
+                    timeout = max(0.0, deadline - loop.time()) if can_announce else None
+                    ready, _ = await asyncio.wait({pending}, timeout=timeout)
+                    if ready:
+                        try:
+                            chunk = pending.result()
+                        except StopAsyncIteration:
+                            if progress_open:
+                                yield {"role": "assistant", "content": ""}
+                            return
+                        if chunk.get("role") == "tool_result" or chunk.get(
+                            "tool_calls"
+                        ):
+                            can_announce = True
+                        elif chunk.get("content"):
+                            # Content is not proof of audio. Keep the deadline;
+                            # only prohibit interruption of an open model message.
+                            can_announce = False
+                        elif chunk.get("role") == "assistant":
+                            can_announce = True
+                        if progress_open and "role" not in chunk:
+                            yield {"role": "assistant"}
+                        progress_open = False
+                        yield chunk
+                        pending = asyncio.create_task(anext(native))
+                        # Give an immediately available terminal/error event priority.
+                        await asyncio.sleep(0)
+                        if pending.done():
+                            try:
+                                next_chunk = pending.result()
+                            except StopAsyncIteration:
+                                if progress_open:
+                                    yield {"role": "assistant", "content": ""}
+                                return
+                            if (
+                                next_chunk.get("content")
+                                or "role" in next_chunk
+                                or next_chunk.get("tool_calls")
+                            ):
+                                continue
+                        if not can_announce or loop.time() < deadline:
+                            continue
+                    if not progress_open:
+                        yield {"role": "assistant"}
+                        progress_open = True
+                    yield {
+                        "content": (
+                            "Ich arbeite noch an deiner Anfrage. "
+                            "Ich melde mich mit dem Ergebnis. "
+                        )
+                    }
+                    deadline = loop.time() + 15.0
+            finally:
+                if not pending.done():
+                    pending.cancel()
+                await asyncio.gather(pending, return_exceptions=True)
+                await native.aclose()
+
+        try:
+            progress = progress_stream()
+            try:
+                async for _ in chat_log.async_add_delta_content_stream(
+                    self.entity_id, progress
+                ):
+                    pass
+            finally:
+                await progress.aclose()
+            if state.pending is None:
+                usage = meta.usage or {}
+                self.hass.bus.async_fire(
+                    "local_openai_llm_generation_complete",
+                    {
+                        "entity_id": self.entity_id,
+                        "type": "generation_complete",
+                        "model": state.model_id,
+                        # One integration request; WebUI's internal loop stays upstream.
+                        "iteration": 1,
+                        "conversation_id": chat_log.conversation_id,
+                        "content": next(
+                            (
+                                c.content
+                                for c in reversed(chat_log.content)
+                                if isinstance(c, conversation.AssistantContent)
+                            ),
+                            None,
+                        ),
+                        "tools_called": meta.tool_names or [],
+                        "token_metadata": {
+                            **usage,
+                            "time_to_first_token_ms": meta.time_to_first_token,
+                        },
+                    },
+                )
+        except asyncio.CancelledError:
+            if state.active and state.chat_id:
+                try:
+                    await asyncio.shield(self._async_webui_stop(state))
+                except Exception:
+                    _LOGGER.exception("OpenWebUI did not confirm cancellation")
+            if state.pending:
+                state.answers = previous_answers
+            raise
+        except (aiohttp.ClientError, socketio.exceptions.SocketIOError) as err:
+            if state.pending:
+                state.answers = previous_answers
+            msg = f"OpenWebUI transport error: {err}"
+            raise HomeAssistantError(msg) from err
+        except Exception:
+            if state.pending:
+                state.answers = previous_answers
+            raise
+        finally:
+            state.active = False
+        return False
 
     def _get_extra_body_args(self, context: AgentContext) -> None:
         """
@@ -584,11 +1403,17 @@ class LocalAiEntity(Entity):
 
     async def _transform_stream(  # noqa: C901 todo: will break this up
         self,
-        stream: AsyncStream[ChatCompletionChunk],
+        stream: AsyncStream[ChatCompletionChunk] | AsyncGenerator[dict, None],
         strip_emojis: bool,
         conversation_id: str | None = None,
         meta: GenerationMetadata | None = None,
-    ) -> AsyncGenerator[conversation.AssistantContentDeltaDict, None]:
+        *,
+        native_deltas: bool = False,
+    ) -> AsyncGenerator[
+        conversation.AssistantContentDeltaDict
+        | conversation.ToolResultContentDeltaDict,
+        None,
+    ]:
         """Transform a streaming OpenAI response to ChatLog format."""
         new_msg = True
         pending_think = ""
@@ -603,58 +1428,76 @@ class LocalAiEntity(Entity):
         async for event in stream:
             chunk: conversation.AssistantContentDeltaDict = {}
 
-            if not event.choices:
-                continue
+            if native_deltas:
+                # WebUI already owns tool execution. Preserve HA's native deltas;
+                # only assistant text goes through the original filter below.
+                chunk = dict(event)
+                choice = None
+                if chunk.get("role") in ("assistant", "tool_result"):
+                    pending_think = ""
+                    in_think = False
+                    seen_visible = False
+                content = chunk.pop("content", None)
+                if chunk.get("role") == "assistant" and content == "":
+                    # HA distinguishes an explicit silent answer from role-only.
+                    chunk["content"] = ""
+                reasoning_content = chunk.pop("thinking_content", None)
+            else:
+                if not event.choices:
+                    continue
 
-            _LOGGER.debug(event)
-            choice = event.choices[0]
-            delta = choice.delta
+                _LOGGER.debug(event)
+                choice = event.choices[0]
+                delta = choice.delta
 
-            if not first_token_recorded and meta is not None and meta.request_start:
-                has_token = (
-                    (delta.content is not None)
-                    or (
-                        getattr(delta, "reasoning_content", None)
-                        or getattr(delta, "reasoning", None)
+                if not first_token_recorded and meta is not None and meta.request_start:
+                    has_token = (
+                        (delta.content is not None)
+                        or (
+                            getattr(delta, "reasoning_content", None)
+                            or getattr(delta, "reasoning", None)
+                        )
+                        or (delta.tool_calls is not None and delta.tool_calls)
                     )
-                    or (delta.tool_calls is not None and delta.tool_calls)
+                    if has_token:
+                        meta.time_to_first_token = round(
+                            (time.time() - meta.request_start) * 1000, 2
+                        )
+                        first_token_recorded = True
+
+                if new_msg:
+                    # openvinotoolkit/model_server fails to provide a message role in its responses, so lets default to assistant if none is received
+                    chunk["role"] = delta.role or "assistant"
+                    new_msg = False
+
+                if (tool_calls := delta.tool_calls) is not None and tool_calls:
+                    # I've never seen this contain more than a single tool call, but let's iterate over it just in case
+                    for tool_call in tool_calls:
+                        tool_call_id, tool_call_name = self._accumulate_tool_call(
+                            pending_tool_calls,
+                            tool_call_id,
+                            tool_call_name,
+                            tool_call,
+                            conversation_id,
+                        )
+
+                # Handle reasoning_content field (used by reasoning models via OpenAI-compatible APIs)
+                # Naming for this field varies. See https://github.com/vllm-project/vllm/issues/27755
+                reasoning_content = getattr(
+                    delta, "reasoning_content", None
+                ) or getattr(
+                    delta,
+                    "reasoning",
+                    None,
                 )
-                if has_token:
-                    meta.time_to_first_token = round(
-                        (time.time() - meta.request_start) * 1000, 2
-                    )
-                    first_token_recorded = True
-
-            if new_msg:
-                # openvinotoolkit/model_server fails to provide a message role in its responses, so lets default to assistant if none is received
-                chunk["role"] = delta.role or "assistant"
-                new_msg = False
-
-            if (tool_calls := delta.tool_calls) is not None and tool_calls:
-                # I've never seen this contain more than a single tool call, but let's iterate over it just in case
-                for tool_call in tool_calls:
-                    tool_call_id, tool_call_name = self._accumulate_tool_call(
-                        pending_tool_calls,
-                        tool_call_id,
-                        tool_call_name,
-                        tool_call,
-                        conversation_id,
-                    )
-
-            # Handle reasoning_content field (used by reasoning models via OpenAI-compatible APIs)
-            # Naming for this field varies. See https://github.com/vllm-project/vllm/issues/27755
-            reasoning_content = getattr(delta, "reasoning_content", None) or getattr(
-                delta,
-                "reasoning",
-                None,
-            )
+                content = delta.content
             if reasoning_content:
                 if _SUPPORTS_THINKING:
                     chunk["thinking_content"] = reasoning_content
                 else:
                     _LOGGER.debug("LLM Thought: %s", reasoning_content)
 
-            if (content := delta.content) is not None:
+            if content is not None:
                 if strip_emojis:
                     content = await loop.run_in_executor(
                         None,
@@ -699,7 +1542,7 @@ class LocalAiEntity(Entity):
                     chunk["content"] = content
 
             tool_error_deltas: list[dict] = []
-            if choice.finish_reason:
+            if choice is not None and choice.finish_reason:
                 # Capture usage stats for event emission
                 meta.usage = getattr(event, "usage", None)
                 meta.timings = getattr(event, "timings", None)
@@ -723,6 +1566,7 @@ class LocalAiEntity(Entity):
                                     id=tool_call["id"],
                                     tool_name=tool_call["name"],
                                     tool_args=args,
+                                    external=False,
                                 )
                             )
                         except json.JSONDecodeError:  # noqa: PERF203
@@ -769,10 +1613,39 @@ class LocalAiEntity(Entity):
         user_input: conversation.ConversationInput | None = None,
         *,
         parallel_tool_calls: bool = False,
-    ) -> None:
-        """Generate an answer for the chat log."""
-        options = self.options
+    ) -> bool:
+        if self._uses_webui:
+            return await self._async_webui_turn(
+                chat_log,
+                user_input=user_input,
+                structure_name=structure_name,
+                structure=structure,
+                parallel_tool_calls=parallel_tool_calls,
+            )
+        model_args, context, _ = await self._async_prepare_chat_log(
+            chat_log,
+            list(chat_log.content),
+            structure_name,
+            structure,
+            user_input,
+            parallel_tool_calls=parallel_tool_calls,
+        )
+        return await self._run_agent_loop(
+            self.entry.runtime_data, model_args, chat_log, context
+        )
 
+    async def _async_prepare_chat_log(  # noqa: PLR0913 - Keep the existing request arguments.
+        self,
+        chat_log: conversation.ChatLog,
+        contents: list,
+        structure_name: str | None,
+        structure: vol.Schema | None,
+        user_input: conversation.ConversationInput | None,
+        *,
+        parallel_tool_calls: bool,
+    ) -> tuple[dict, AgentContext, dict | None]:
+        """Prepare existing request arguments from the pre-announcement input."""
+        options = self.options
         max_message_history = options.get(CONF_MAX_MESSAGE_HISTORY)
         if max_message_history is not None:
             max_message_history = int(max_message_history)
@@ -800,7 +1673,7 @@ class LocalAiEntity(Entity):
             model_args["temperature"] = temperature
 
         tools: list[ChatCompletionFunctionToolParam] | None = None
-        if chat_log.llm_api:
+        if chat_log.llm_api and not self._uses_webui:
             # Sorted by name because intent.async_get() yields tools in registration
             # order, which differs from one restart to the next. Tool schemas render
             # at the start of the prompt, so a reorder invalidates the whole prefix
@@ -813,7 +1686,7 @@ class LocalAiEntity(Entity):
         messages = self._trim_history(
             [
                 m
-                for content in chat_log.content
+                for content in contents
                 if (
                     m := await self._convert_content_to_chat_message(
                         content, chat_log.conversation_id
@@ -824,6 +1697,9 @@ class LocalAiEntity(Entity):
         )
 
         method = options.get(CONF_CONTENT_INJECTION_METHOD)
+        if self._uses_webui and method == CONF_CONTENT_INJECTION_METHOD_TOOL:
+            method = None
+        original_message_count = len(messages)
         messages, tools = await self._maybe_inject_context(
             messages,
             method,
@@ -847,9 +1723,8 @@ class LocalAiEntity(Entity):
                 ),
             )
 
-        client = self.entry.runtime_data
-
-        return await self._run_agent_loop(client, model_args, chat_log, context)
+        injected = messages[-2] if len(messages) > original_message_count else None
+        return model_args, context, injected
 
     async def _run_agent_loop(
         self,

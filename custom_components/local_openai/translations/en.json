@@ -118,7 +118,10 @@
             "max_message_history": "Max previous conversation rounds to include",
             "parallel_tool_calls": "Parallel tool calling",
             "content_injection_method": "Date/Time context injection role",
-            "always_continue_conversation": "Always continue conversation"
+            "always_continue_conversation": "Always continue conversation",
+            "openwebui_native": "Use OpenWebUI flow",
+            "openwebui_attach_ha_prompt": "Append HomeAssistant prompt",
+            "pipeline_timeout": "Minimum Assist pipeline timeout (seconds)"
           },
           "data_description": {
             "model": "The model to use for the conversation agent",
@@ -127,7 +130,10 @@
             "parallel_tool_calls": "Allow the model to use multiple tools in a single turn",
             "temperature": "Lower for more predictable responses, higher for more randomness",
             "content_injection_method": "The message role to insert dynamic content as. See the readme for details",
-            "always_continue_conversation": "Voice assistants will always be prompted to continue the conversation"
+            "always_continue_conversation": "Voice assistants will always be prompted to continue the conversation",
+            "openwebui_native": "Use a saved OpenWebUI chat with the Workspace assistant's tools and features.",
+            "openwebui_attach_ha_prompt": "OpenWebUI flow only: prepend the prepared Home Assistant prompt to each new user message. When disabled, ignore the Home Assistant prompt. The Workspace system prompt stays unchanged.",
+            "pipeline_timeout": "Minimum time allowed for new Assist pipeline runs using this agent. Default: 1800 seconds (30 minutes). Longer client timeouts are preserved."
           },
           "sections": {
             "chat_template_opts": {
@@ -216,7 +222,10 @@
             "max_message_history": "Max previous conversation rounds to include",
             "parallel_tool_calls": "Parallel tool calling",
             "content_injection_method": "Date/Time context injection role",
-            "always_continue_conversation": "Always continue conversation"
+            "always_continue_conversation": "Always continue conversation",
+            "openwebui_native": "Use OpenWebUI flow",
+            "openwebui_attach_ha_prompt": "Append HomeAssistant prompt",
+            "pipeline_timeout": "Minimum Assist pipeline timeout (seconds)"
           },
           "data_description": {
             "model": "The model to use for the conversation agent",
@@ -225,7 +234,10 @@
             "parallel_tool_calls": "Allow the model to use multiple tools in a single turn",
             "temperature": "Lower for more predictable responses, higher for more randomness",
             "content_injection_method": "The message role to insert dynamic content as. See the readme for details",
-            "always_continue_conversation": "Voice assistants will always be prompted to continue the conversation"
+            "always_continue_conversation": "Voice assistants will always be prompted to continue the conversation",
+            "openwebui_native": "Use a saved OpenWebUI chat with the Workspace assistant's tools and features.",
+            "openwebui_attach_ha_prompt": "OpenWebUI flow only: prepend the prepared Home Assistant prompt to each new user message. When disabled, ignore the Home Assistant prompt. The Workspace system prompt stays unchanged.",
+            "pipeline_timeout": "Minimum time allowed for new Assist pipeline runs using this agent. Default: 1800 seconds (30 minutes). Longer client timeouts are preserved."
           },
           "sections": {
             "chat_template_opts": {

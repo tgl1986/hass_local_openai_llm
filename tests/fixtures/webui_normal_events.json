@@ -1,0 +1,225 @@
+[
+  {
+    "type": "chat:list",
+    "data": {
+      "chat_id": "ea241cbb-bb03-4d2b-b81e-b0cfaba751c4",
+      "folder_id": null
+    }
+  },
+  {
+    "type": "chat:active",
+    "data": {
+      "active": true,
+      "folder_id": null,
+      "pending_approval": false
+    }
+  },
+  {
+    "type": "response:completion",
+    "data": {
+      "type": "response.output_item.added",
+      "output_index": 0,
+      "item": {
+        "type": "function_call",
+        "id": "call_native_saved_chat_637d088126",
+        "call_id": "call_native_saved_chat_637d088126",
+        "name": "record_probe",
+        "arguments": "",
+        "status": "in_progress"
+      }
+    }
+  },
+  {
+    "type": "response:completion",
+    "data": {
+      "type": "response.function_call_arguments.delta",
+      "item_id": "call_native_saved_chat_637d088126",
+      "output_index": 0,
+      "delta": "{\"run_id\": \"native_saved_chat_637d088126\"}"
+    }
+  },
+  {
+    "type": "chat:completion",
+    "data": {
+      "id": "chatcmpl-native_saved_chat_637d088126",
+      "object": "chat.completion.chunk",
+      "created": 1794074690,
+      "model": "wire-fixture",
+      "choices": [
+        {
+          "index": 0,
+          "delta": {},
+          "finish_reason": "tool_calls"
+        }
+      ]
+    }
+  },
+  {
+    "type": "response:completion",
+    "data": {
+      "type": "response.function_call_arguments.done",
+      "item_id": "call_native_saved_chat_637d088126",
+      "output_index": 0,
+      "arguments": "{\"run_id\": \"native_saved_chat_637d088126\"}"
+    }
+  },
+  {
+    "type": "response:completion",
+    "data": {
+      "type": "response.output_item.done",
+      "output_index": 0,
+      "item": {
+        "type": "function_call",
+        "id": "call_native_saved_chat_637d088126",
+        "call_id": "call_native_saved_chat_637d088126",
+        "name": "record_probe",
+        "arguments": "{\"run_id\": \"native_saved_chat_637d088126\"}",
+        "status": "completed"
+      }
+    }
+  },
+  {
+    "type": "response:completion",
+    "data": {
+      "type": "response.output_item.done",
+      "output_index": 0,
+      "item": {
+        "type": "function_call",
+        "id": "call_native_saved_chat_637d088126",
+        "call_id": "call_native_saved_chat_637d088126",
+        "name": "record_probe",
+        "arguments": "{\"run_id\": \"native_saved_chat_637d088126\"}",
+        "status": "completed"
+      }
+    }
+  },
+  {
+    "type": "response:completion",
+    "data": {
+      "type": "response.output_item.done",
+      "output_index": 0,
+      "item": {
+        "type": "function_call",
+        "id": "call_native_saved_chat_637d088126",
+        "call_id": "call_native_saved_chat_637d088126",
+        "name": "record_probe",
+        "arguments": "{\"run_id\":\"native_saved_chat_637d088126\"}",
+        "status": "completed",
+        "started_at": 1794074690.7689636,
+        "ended_at": 1794074690.770638,
+        "duration": 0.0016746069304645061
+      }
+    }
+  },
+  {
+    "type": "response:completion",
+    "data": {
+      "type": "response.output_item.done",
+      "output_index": 1,
+      "item": {
+        "type": "function_call_output",
+        "id": "fco_aa256e8b62c94024a8ad6117",
+        "call_id": "call_native_saved_chat_637d088126",
+        "output": [
+          {
+            "type": "input_text",
+            "text": "EXECUTED_native_saved_chat_637d088126"
+          }
+        ],
+        "status": "completed"
+      }
+    }
+  },
+  {
+    "type": "response:completion",
+    "data": {
+      "type": "response.output_text.delta",
+      "item_id": "msg_04d4c1897ec34c6699668dce",
+      "output_index": 2,
+      "content_index": 0,
+      "delta": "FINAL native_saved_chat_637d088126: EXECUTED_native_saved_chat_637d088126"
+    }
+  },
+  {
+    "type": "chat:completion",
+    "data": {
+      "id": "chatcmpl-native_saved_chat_637d088126",
+      "object": "chat.completion.chunk",
+      "created": 1794074690,
+      "model": "wire-fixture",
+      "choices": [
+        {
+          "index": 0,
+          "delta": {},
+          "finish_reason": "stop"
+        }
+      ]
+    }
+  },
+  {
+    "type": "chat:list",
+    "data": {
+      "chat_id": "ea241cbb-bb03-4d2b-b81e-b0cfaba751c4",
+      "folder_id": null
+    }
+  },
+  {
+    "type": "chat:completion",
+    "data": {
+      "done": true,
+      "output": [
+        {
+          "type": "function_call",
+          "id": "call_native_saved_chat_637d088126",
+          "call_id": "call_native_saved_chat_637d088126",
+          "name": "record_probe",
+          "arguments": "{\"run_id\":\"native_saved_chat_637d088126\"}",
+          "status": "completed",
+          "started_at": 1794074690.7689636,
+          "ended_at": 1794074690.770638,
+          "duration": 0.0016746069304645061
+        },
+        {
+          "type": "function_call_output",
+          "id": "fco_aa256e8b62c94024a8ad6117",
+          "call_id": "call_native_saved_chat_637d088126",
+          "output": [
+            {
+              "type": "input_text",
+              "text": "EXECUTED_native_saved_chat_637d088126"
+            }
+          ],
+          "status": "completed"
+        },
+        {
+          "type": "message",
+          "id": "msg_04d4c1897ec34c6699668dce",
+          "status": "completed",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "output_text",
+              "text": "FINAL native_saved_chat_637d088126: EXECUTED_native_saved_chat_637d088126"
+            }
+          ]
+        }
+      ],
+      "title": "native_saved_chat_637d088126",
+      "usage": {
+        "incomplete": true
+      }
+    }
+  },
+  {
+    "type": "chat:title",
+    "data": "Call record_probe exactly once and report its result. RUN=native_saved_chat_637d088126"
+  },
+  {
+    "type": "chat:active",
+    "data": {
+      "active": false,
+      "folder_id": null,
+      "pending_approval": false
+    }
+  }
+]

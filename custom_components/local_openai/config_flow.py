@@ -97,8 +97,11 @@ from .const import (
     CONF_LLAMACPP_CONFIG,
     CONF_LOCALAI_CONFIG,
     CONF_MAX_MESSAGE_HISTORY,
+    CONF_OPENWEBUI_ATTACH_HA_PROMPT,
+    CONF_OPENWEBUI_NATIVE,
     CONF_PARALLEL_TOOL_CALLS,
     CONF_PASS_SESSION_ID,
+    CONF_PIPELINE_TIMEOUT,
     CONF_REQUEST_BODY_OPTS,
     CONF_REQUEST_BODY_PARAMETERS,
     CONF_SERVER_HEADERS,
@@ -121,6 +124,7 @@ from .const import (
     CONF_WEAVIATE_OPTIONS,
     CONF_WEAVIATE_THRESHOLD,
     DECISION_SERVER_TYPES,
+    DEFAULT_PIPELINE_TIMEOUT,
     DOMAIN,
     LOGGER,
     PLACEHOLDER_API_KEY,
@@ -659,6 +663,13 @@ class ConversationFlowHandler(LocalAiSubentryFlowHandler):
                 CONF_ALWAYS_CONTINUE_CONVERSATION,
                 default=CONF_ALWAYS_CONTINUE_CONVERSATION_DEFAULT,
             ): bool,
+            vol.Optional(CONF_OPENWEBUI_NATIVE, default=False): bool,
+            vol.Optional(CONF_OPENWEBUI_ATTACH_HA_PROMPT, default=False): bool,
+            vol.Optional(
+                CONF_PIPELINE_TIMEOUT, default=DEFAULT_PIPELINE_TIMEOUT
+            ): NumberSelector(
+                NumberSelectorConfig(min=1, step=1, mode=NumberSelectorMode.BOX)
+            ),
             vol.Optional(
                 CONF_TEMPERATURE,
             ): NumberSelector(

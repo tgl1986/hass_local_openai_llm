@@ -1,0 +1,67 @@
+# OpenWebUI extension on upstream 1.15.1
+
+This fork integrates the existing native OpenWebUI extension with upstream
+`dab61de01e3a7c906c404a27338afda92b1ab5f3` (1.15.1).
+The extension was developed against 1.15.0 (`de73dc3812ef269f02f315ada6dd689d536ff1b2`),
+including the prompt/tools update, pipeline timeout patch, voice streaming fix,
+and the subsequently approved 10-second standby adjustment. These changes are
+already in the source tree; do not reapply the old 1.15.0 patches to this fork.
+
+## Behaviour and boundaries
+
+- Enable the native OpenWebUI option for the relevant agent. Configure its server
+  and credentials through the existing integration configuration. WebUI retains
+  ownership of Workspace prompts, permissions, tools and tool execution.
+- HA prompt attachment is optional. Pending questions, resolution and cancellation
+  use the existing WebUI conversation endpoints and saved chat state.
+- Native events enter HA ChatLog through the integration's existing streaming
+  transformer, including its think and optional emoji filtering. There is no
+  additional Markdown parser, sentence buffer or replacement TTS implementation.
+- Completed response items are forwarded promptly with existing deduplication;
+  tool boundaries reset thinking state. Harmless reasoning whitespace changes
+  do not abort a turn.
+- A standby message becomes eligible after 10 seconds from native turn-handler
+  entry, then every 15 seconds after a reminder while work continues. An open
+  model message is not interrupted. The message is:
+  `Ich arbeite noch an deiner Anfrage. Ich melde mich mit dem Ergebnis. `
+  It uses ordinary HA text/TTS streaming. These intervals are not audio playback
+  deadlines and do not change Companion's independent 30-second HTTP timeout.
+- The existing configurable Assist pipeline timeout registration is preserved:
+  the integration delegates to the original WebSocket command handler with the
+  selected agent's timeout. It does not edit HA Core or alter already active runs.
+- HA Core, Companion, WebUI and TTS are not modified. Non-native SDK agents retain
+  their existing request and tool paths.
+
+## Upstream merge decisions
+
+The 1.15.1 vLLM migration default (zero thinking budget), llama.cpp FIRST_LOOP
+budget behaviour and minimum HA version 2026.11.0 are retained. The upstream
+StopTalkingTool duplicate guard is combined with the extension's native-WebUI
+exclusion. Manifest version stays 1.15.1 and adds the existing Socket.IO dependency.
+Upstream `entity.py` was unchanged between 1.15.0 and 1.15.1. The imported extension
+file had SHA256 `799d8fd7cf27662c5a972e9c175edb8f9a62dd0f74ae10f4938667e47a9d68bb`
+before repository formatting and lint-only adjustments.
+
+## Validation
+
+Run the existing project checks with Python 3.14 and `requirements_test.txt`:
+
+```sh
+python -m pytest -q --no-cov
+python -m ruff check .
+python -m ruff format . --check
+```
+
+Tests include upstream SDK behaviour, native events, pending/resolve/stop,
+streaming, standby timing and pipeline timeout lifecycle. Audio replay uses
+recorded fixture events and generated WAV data, not actual speech or live models.
+The initial complete run found one test output path tied to the old sandbox;
+it now uses pytest's temporary directory. No model run or deployment is part of
+this repository integration. Owner runtime acceptance of the 10-second standby
+adjustment remains separate from automated regression testing.
+
+Final validation on Braincore: **454 passed**, 5 dependency deprecation warnings,
+70.79 seconds. Ruff check and format check passed (66 Python files). An AST
+comparison confirmed that the imported streaming implementation differs only by
+formatting, explicit built-in import, type annotations and an equivalent exception
+message assignment needed by the repository's existing lint rules.

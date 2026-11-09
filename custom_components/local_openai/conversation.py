@@ -11,8 +11,11 @@ from homeassistant.helpers import llm
 from .const import (
     CONF_ALWAYS_CONTINUE_CONVERSATION,
     CONF_ALWAYS_CONTINUE_CONVERSATION_DEFAULT,
+    CONF_OPENWEBUI_ATTACH_HA_PROMPT,
     CONF_PARALLEL_TOOL_CALLS,
+    CONF_PIPELINE_TIMEOUT,
     CONF_SERVER_TYPE,
+    DEFAULT_PIPELINE_TIMEOUT,
     DOMAIN,
     SERVER_TYPE_DEEPSEEK,
     SERVER_TYPE_GENERIC,
@@ -22,6 +25,7 @@ from .const import (
     SERVER_TYPE_VLLM,
 )
 from .entity import LocalAiEntity
+from .pipeline_timeout import async_register_agent_timeout
 from .tools.api import InternalToolApi
 from .tools.stop_talking import StopTalkingTool
 
@@ -96,6 +100,21 @@ class LocalAiConversationEntity(LocalAiEntity, conversation.ConversationEntity):
         """Return a list of supported languages."""
         return MATCH_ALL
 
+    async def async_added_to_hass(self) -> None:
+        """Apply this agent's timeout to new Assist pipeline requests."""
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            await async_register_agent_timeout(
+                self.hass,
+                lambda: (
+                    self.entity_id,
+                    self.subentry.data.get(
+                        CONF_PIPELINE_TIMEOUT, DEFAULT_PIPELINE_TIMEOUT
+                    ),
+                ),
+            )
+        )
+
     async def _async_handle_message(
         self,
         user_input: conversation.ConversationInput,
@@ -115,7 +134,11 @@ class LocalAiConversationEntity(LocalAiEntity, conversation.ConversationEntity):
         llm_apis = options.get(CONF_LLM_HASS_API, [])
         llm_apis = [api for api in llm_apis if api in hass_apis]
 
-        if always_continue_conversation and not llm_apis:
+        if self._uses_webui:
+            # WebUI resolves its own Workspace tools and permissions.
+            llm_apis = []
+
+        if always_continue_conversation and not llm_apis and not self._uses_webui:
             # Inject our internal tooling for `stop_talking` as an API if no other tooling providers exist
             llm_apis = InternalToolApi(
                 hass=self.hass,
@@ -123,15 +146,20 @@ class LocalAiConversationEntity(LocalAiEntity, conversation.ConversationEntity):
             )
 
         try:
-            await chat_log.async_provide_llm_data(
-                user_input.as_llm_context(DOMAIN),
-                llm_apis,
-                system_prompt,
-                user_input.extra_system_prompt,
-            )
+            if not self._uses_webui or (
+                options.get(CONF_OPENWEBUI_ATTACH_HA_PROMPT, False)
+                and not self._webui_has_pending(chat_log.conversation_id)
+            ):
+                await chat_log.async_provide_llm_data(
+                    user_input.as_llm_context(DOMAIN),
+                    llm_apis,
+                    system_prompt,
+                    user_input.extra_system_prompt,
+                )
 
             if (
-                always_continue_conversation
+                not self._uses_webui
+                and always_continue_conversation
                 and not isinstance(llm_apis, InternalToolApi)
                 and not any(
                     isinstance(tool, StopTalkingTool) for tool in chat_log.llm_api.tools
@@ -142,6 +170,7 @@ class LocalAiConversationEntity(LocalAiEntity, conversation.ConversationEntity):
         except conversation.ConverseError as err:
             return err.as_conversation_result()
 
+        turn_start = len(chat_log.content)
         halt_conversation = await self._async_handle_chat_log(
             chat_log,
             user_input=user_input,
@@ -152,7 +181,20 @@ class LocalAiConversationEntity(LocalAiEntity, conversation.ConversationEntity):
             user_input, chat_log
         )
 
-        if halt_conversation:
+        if self._uses_webui and chat_log.content[-1].content == "":
+            # A tool-only ending must preserve preceding speech for non-streaming
+            # TTS too, without emitting the announcement's streaming deltas again.
+            chat_log_result.response.async_set_speech(
+                "".join(
+                    content.content or ""
+                    for content in chat_log.content[turn_start:]
+                    if isinstance(content, conversation.AssistantContent)
+                )
+            )
+
+        if self._uses_webui and self._webui_has_pending(chat_log.conversation_id):
+            chat_log_result.continue_conversation = True
+        elif halt_conversation:
             # If we've received our stop_talking halt signal
             chat_log_result.continue_conversation = False
         elif always_continue_conversation:

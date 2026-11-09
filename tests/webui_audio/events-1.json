@@ -1,0 +1,281 @@
+[
+  {
+    "chat_id": "8d5502a1-6fff-46e1-892a-2b1336dab946",
+    "message_id": "d2f1c827-7e72-4394-9f2a-532dfda9bb3c",
+    "data": {
+      "type": "chat:list",
+      "data": {
+        "chat_id": "8d5502a1-6fff-46e1-892a-2b1336dab946",
+        "folder_id": null
+      }
+    }
+  },
+  {
+    "chat_id": "8d5502a1-6fff-46e1-892a-2b1336dab946",
+    "message_id": "d0bf21ae-c2b3-4ca3-afe2-9dda20fbc54d",
+    "data": {
+      "type": "chat:active",
+      "data": {
+        "active": true,
+        "folder_id": null,
+        "pending_approval": false
+      }
+    }
+  },
+  {
+    "chat_id": "8d5502a1-6fff-46e1-892a-2b1336dab946",
+    "message_id": "d0bf21ae-c2b3-4ca3-afe2-9dda20fbc54d",
+    "data": {
+      "type": "response:completion",
+      "data": {
+        "type": "response.output_item.added",
+        "output_index": 0,
+        "item": {
+          "type": "function_call",
+          "id": "call_weather_probe",
+          "call_id": "call_weather_probe",
+          "name": "get_weather",
+          "arguments": "",
+          "status": "in_progress"
+        }
+      }
+    }
+  },
+  {
+    "chat_id": "8d5502a1-6fff-46e1-892a-2b1336dab946",
+    "message_id": "d0bf21ae-c2b3-4ca3-afe2-9dda20fbc54d",
+    "data": {
+      "type": "response:completion",
+      "data": {
+        "type": "response.function_call_arguments.delta",
+        "item_id": "call_weather_probe",
+        "output_index": 0,
+        "delta": "{\"city\":\"Berlin\"}"
+      }
+    }
+  },
+  {
+    "chat_id": "8d5502a1-6fff-46e1-892a-2b1336dab946",
+    "message_id": "d0bf21ae-c2b3-4ca3-afe2-9dda20fbc54d",
+    "data": {
+      "type": "chat:completion",
+      "data": {
+        "id": "chatcmpl-weather-probe",
+        "object": "chat.completion.chunk",
+        "created": 1794098464,
+        "model": "weather-probe-model",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {},
+            "finish_reason": "tool_calls"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "chat_id": "8d5502a1-6fff-46e1-892a-2b1336dab946",
+    "message_id": "d0bf21ae-c2b3-4ca3-afe2-9dda20fbc54d",
+    "data": {
+      "type": "response:completion",
+      "data": {
+        "type": "response.function_call_arguments.done",
+        "item_id": "call_weather_probe",
+        "output_index": 0,
+        "arguments": "{\"city\":\"Berlin\"}"
+      }
+    }
+  },
+  {
+    "chat_id": "8d5502a1-6fff-46e1-892a-2b1336dab946",
+    "message_id": "d0bf21ae-c2b3-4ca3-afe2-9dda20fbc54d",
+    "data": {
+      "type": "response:completion",
+      "data": {
+        "type": "response.output_item.done",
+        "output_index": 0,
+        "item": {
+          "type": "function_call",
+          "id": "call_weather_probe",
+          "call_id": "call_weather_probe",
+          "name": "get_weather",
+          "arguments": "{\"city\":\"Berlin\"}",
+          "status": "completed"
+        }
+      }
+    }
+  },
+  {
+    "chat_id": "8d5502a1-6fff-46e1-892a-2b1336dab946",
+    "message_id": "d0bf21ae-c2b3-4ca3-afe2-9dda20fbc54d",
+    "data": {
+      "type": "response:completion",
+      "data": {
+        "type": "response.output_item.done",
+        "output_index": 0,
+        "item": {
+          "type": "function_call",
+          "id": "call_weather_probe",
+          "call_id": "call_weather_probe",
+          "name": "get_weather",
+          "arguments": "{\"city\":\"Berlin\"}",
+          "status": "completed"
+        }
+      }
+    }
+  },
+  {
+    "chat_id": "8d5502a1-6fff-46e1-892a-2b1336dab946",
+    "message_id": "d0bf21ae-c2b3-4ca3-afe2-9dda20fbc54d",
+    "data": {
+      "type": "response:completion",
+      "data": {
+        "type": "response.output_item.done",
+        "output_index": 0,
+        "item": {
+          "type": "function_call",
+          "id": "call_weather_probe",
+          "call_id": "call_weather_probe",
+          "name": "get_weather",
+          "arguments": "{\"city\":\"Berlin\"}",
+          "status": "completed",
+          "started_at": 1794098464.224228,
+          "ended_at": 1794098464.22591,
+          "duration": 0.001682498026639223
+        }
+      }
+    }
+  },
+  {
+    "chat_id": "8d5502a1-6fff-46e1-892a-2b1336dab946",
+    "message_id": "d0bf21ae-c2b3-4ca3-afe2-9dda20fbc54d",
+    "data": {
+      "type": "response:completion",
+      "data": {
+        "type": "response.output_item.done",
+        "output_index": 1,
+        "item": {
+          "type": "function_call_output",
+          "id": "fco_a2f1a0eec0d2457bac418bd3",
+          "call_id": "call_weather_probe",
+          "output": [
+            {
+              "type": "input_text",
+              "text": "WEATHER_FIXTURE_EXECUTED: Berlin"
+            }
+          ],
+          "status": "completed"
+        }
+      }
+    }
+  },
+  {
+    "chat_id": "8d5502a1-6fff-46e1-892a-2b1336dab946",
+    "message_id": "d0bf21ae-c2b3-4ca3-afe2-9dda20fbc54d",
+    "data": {
+      "type": "response:completion",
+      "data": {
+        "type": "response.output_text.delta",
+        "item_id": "msg_262e567fcadf4b31a7f7de9c",
+        "output_index": 2,
+        "content_index": 0,
+        "delta": "WEATHER_TOOL_OK WEATHER_FIXTURE_EXECUTED: Berlin"
+      }
+    }
+  },
+  {
+    "chat_id": "8d5502a1-6fff-46e1-892a-2b1336dab946",
+    "message_id": "d0bf21ae-c2b3-4ca3-afe2-9dda20fbc54d",
+    "data": {
+      "type": "chat:completion",
+      "data": {
+        "id": "chatcmpl-weather-probe",
+        "object": "chat.completion.chunk",
+        "created": 1794098464,
+        "model": "weather-probe-model",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {},
+            "finish_reason": "stop"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "chat_id": "8d5502a1-6fff-46e1-892a-2b1336dab946",
+    "message_id": "d0bf21ae-c2b3-4ca3-afe2-9dda20fbc54d",
+    "data": {
+      "type": "chat:list",
+      "data": {
+        "chat_id": "8d5502a1-6fff-46e1-892a-2b1336dab946",
+        "folder_id": null
+      }
+    }
+  },
+  {
+    "chat_id": "8d5502a1-6fff-46e1-892a-2b1336dab946",
+    "message_id": "d0bf21ae-c2b3-4ca3-afe2-9dda20fbc54d",
+    "data": {
+      "type": "chat:completion",
+      "data": {
+        "done": true,
+        "output": [
+          {
+            "type": "function_call",
+            "id": "call_weather_probe",
+            "call_id": "call_weather_probe",
+            "name": "get_weather",
+            "arguments": "{\"city\":\"Berlin\"}",
+            "status": "completed",
+            "started_at": 1794098464.224228,
+            "ended_at": 1794098464.22591,
+            "duration": 0.001682498026639223
+          },
+          {
+            "type": "function_call_output",
+            "id": "fco_a2f1a0eec0d2457bac418bd3",
+            "call_id": "call_weather_probe",
+            "output": [
+              {
+                "type": "input_text",
+                "text": "WEATHER_FIXTURE_EXECUTED: Berlin"
+              }
+            ],
+            "status": "completed"
+          },
+          {
+            "type": "message",
+            "id": "msg_262e567fcadf4b31a7f7de9c",
+            "status": "completed",
+            "role": "assistant",
+            "content": [
+              {
+                "type": "output_text",
+                "text": "WEATHER_TOOL_OK WEATHER_FIXTURE_EXECUTED: Berlin"
+              }
+            ]
+          }
+        ],
+        "title": "Home Assistant",
+        "usage": {
+          "incomplete": true
+        }
+      }
+    }
+  },
+  {
+    "chat_id": "8d5502a1-6fff-46e1-892a-2b1336dab946",
+    "message_id": "d0bf21ae-c2b3-4ca3-afe2-9dda20fbc54d",
+    "data": {
+      "type": "chat:active",
+      "data": {
+        "active": false,
+        "folder_id": null,
+        "pending_approval": false
+      }
+    }
+  }
+]
