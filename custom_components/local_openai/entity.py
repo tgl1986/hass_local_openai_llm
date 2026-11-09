@@ -1687,6 +1687,11 @@ class LocalAiEntity(Entity):
             [
                 m
                 for content in contents
+                if not (
+                    self._uses_webui
+                    and not options.get(CONF_OPENWEBUI_ATTACH_HA_PROMPT, False)
+                    and content.role == "system"
+                )
                 if (
                     m := await self._convert_content_to_chat_message(
                         content, chat_log.conversation_id

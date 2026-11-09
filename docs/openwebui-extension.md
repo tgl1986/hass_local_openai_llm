@@ -65,3 +65,24 @@ Final validation on Braincore: **454 passed**, 5 dependency deprecation warnings
 comparison confirmed that the imported streaming implementation differs only by
 formatting, explicit built-in import, type annotations and an equivalent exception
 message assignment needed by the repository's existing lint rules.
+
+## Native system-message handoff fix
+
+The native WebUI path now omits HA system messages before Completions conversion
+when HA prompt attachment is disabled. Previously it converted the empty initial
+HA system message first, producing `Could not convert message to Completions API`,
+and removed system messages later when building the WebUI request. Prompt attachment
+and ordinary SDK agents retain their conversion paths; logging is unchanged.
+
+Regression coverage uses the native `async_accept_pipeline_from_satellite` entry,
+real HA STT/pipeline/ChatLog/TTS handling and the integration's complete native turn.
+Only hardware, recognizer output and backend transport are fixtures. Both TTS modes
+produce downloadable audio and finish the pipeline; reporting playback completion
+returns the simulated satellite to idle. A backend exception also completes as a
+spoken HA error response. Four handoff cases cover empty/nonempty excluded system
+messages, enabled HA prompt attachment and ordinary SDK conversion.
+This is software-path coverage, not validation on the owner's physical satellite.
+
+Validation: 461 tests passed (5 dependency deprecation warnings), including seven
+new handoff/satellite cases. Ruff check and format check passed. The two affected
+native handoff cases fail against the previous code and pass with this fix.
