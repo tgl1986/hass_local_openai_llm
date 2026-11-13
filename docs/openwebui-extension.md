@@ -86,3 +86,22 @@ This is software-path coverage, not validation on the owner's physical satellite
 Validation: 461 tests passed (5 dependency deprecation warnings), including seven
 new handoff/satellite cases. Ruff check and format check passed. The two affected
 native handoff cases fail against the previous code and pass with this fix.
+
+## WebUI text-message storage fix
+
+HA converts even text-only input to a Completions content-parts list. The native
+WebUI path now joins text-only parts into a string for the saved user message and
+the completion request's `user_message`. This also covers an attached HA prompt.
+Both `history.messages` and the saved `messages` list receive that same string,
+which the WebUI chat renderer expects. The Completions `messages` payload and
+ordinary SDK conversion are unchanged. No image conversion is added.
+
+This fixes newly written text messages for the reported OpenWebUI 0.13.3 issue;
+it does not migrate previously saved chats. Existing chat IDs, message links,
+Workspace options, tool execution, streaming and cancellation are preserved.
+Regression tests use real HA text conversion with mocked WebUI transport, covering
+creation, continuation and HA prompt attachment. Three assertions fail on the
+previous source. Sandbox validation does not call a real model or production API.
+
+Validation on 2026-11-13: 463 tests passed in 70.14 seconds (five dependency
+deprecation warnings); Ruff lint and format checks passed for all 67 Python files.

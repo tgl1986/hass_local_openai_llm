@@ -597,6 +597,12 @@ class LocalAiEntity(Entity):
                 else [{"type": "text", "text": system}, *content]
             )
             body["messages"][-1]["content"] = deepcopy(user["content"])
+        # Saved WebUI messages are rendered as strings, unlike Completions parts.
+        content = user["content"]
+        if isinstance(content, list) and all(
+            part.get("type") == "text" for part in content
+        ):
+            user["content"] = "\n\n".join(part["text"] for part in content)
         user.update(
             id=user_id,
             parentId=parent_id,
