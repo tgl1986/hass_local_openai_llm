@@ -29,8 +29,10 @@ def context_entity(mock_conversation_entity):
 
 
 @pytest.mark.parametrize("attach", [False, True])
-@pytest.mark.parametrize("multimodal", [False, True])
-async def test_ha_prompt_only_in_new_user_content(context_entity, attach, multimodal):
+@pytest.mark.parametrize("content_format", ["string", "text_parts", "multimodal"])
+async def test_ha_prompt_only_in_new_user_content(
+    context_entity, attach, content_format
+):
     entity = context_entity
     entity.subentry.data[CONF_OPENWEBUI_ATTACH_HA_PROMPT] = attach
     user_content = (
@@ -38,9 +40,15 @@ async def test_ha_prompt_only_in_new_user_content(context_entity, attach, multim
             {"type": "text", "text": "QUESTION"},
             {"type": "image_url", "image_url": {"url": "data:image/png;base64,test"}},
         ]
-        if multimodal
+        if content_format == "multimodal"
         else "QUESTION"
     )
+    if content_format == "text_parts":
+        # Use the actual HA-to-Completions conversion, including text-only input.
+        converted = await entity._convert_content_to_chat_message(
+            conversation.UserContent(content="QUESTION"), "ha-conversation"
+        )
+        user_content = converted["content"]
     original_user_content = deepcopy(user_content)
     model = {
         "id": "test-model",
@@ -81,17 +89,31 @@ async def test_ha_prompt_only_in_new_user_content(context_entity, attach, multim
     expected = (
         (
             [{"type": "text", "text": "HA_PROMPT"}, *user_content]
-            if multimodal
+            if content_format != "string"
             else "HA_PROMPT\n\nQUESTION"
         )
         if attach
         else user_content
     )
     posted = entity._async_webui_request.call_args.args[3]["chat"]
-    assert body["user_message"]["content"] == expected
+    saved_content = (
+        ("HA_PROMPT\n\nQUESTION" if attach else "QUESTION")
+        if content_format == "text_parts"
+        else expected
+    )
+    assert body["user_message"]["content"] == saved_content
     assert body["messages"][-1]["content"] == expected
     assert (
-        posted["history"]["messages"][body["user_message"]["id"]]["content"] == expected
+        posted["history"]["messages"][body["user_message"]["id"]]["content"]
+        == saved_content
+    )
+    assert (
+        next(
+            message
+            for message in posted["messages"]
+            if message["id"] == body["user_message"]["id"]
+        )["content"]
+        == saved_content
     )
     assert "system" not in body["params"] and "system" not in posted["params"]
     assert all(m["role"] != "system" for m in body["messages"])
@@ -128,7 +150,9 @@ async def test_checkbox_toggle_does_not_rewrite_earlier_user(context_entity):
             "model": "test-model",
             "messages": [
                 {"role": "system", "content": "HA_FIRST"},
-                {"role": "user", "content": "ONE"},
+                await entity._convert_content_to_chat_message(
+                    conversation.UserContent(content="ONE"), "ha-conversation"
+                ),
             ],
         },
         {},
@@ -143,14 +167,24 @@ async def test_checkbox_toggle_does_not_rewrite_earlier_user(context_entity):
             "model": "test-model",
             "messages": [
                 {"role": "system", "content": "HA_SECOND"},
-                {"role": "user", "content": "TWO"},
+                await entity._convert_content_to_chat_message(
+                    conversation.UserContent(content="TWO"), "ha-conversation"
+                ),
             ],
         },
         {},
         None,
     )
     assert second["user_message"]["content"] == "TWO"
+    assert second["user_message"]["parentId"] == first["id"]
+    assert saved["history"]["messages"][first["id"]]["childrenIds"] == [
+        second["user_message"]["id"]
+    ]
     assert saved["history"]["messages"][first_id]["content"] == "HA_FIRST\n\nONE"
+    assert [m["content"] for m in saved["messages"] if m["role"] == "user"] == [
+        "HA_FIRST\n\nONE",
+        "TWO",
+    ]
     assert "HA_SECOND" not in json.dumps(saved)
 
 
